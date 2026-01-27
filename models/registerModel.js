@@ -76,8 +76,23 @@ const registerSchema=new Schema({
     receiptId: {
         type:String,
         unique:true,
-    }
-   
+    },
+   transactionId: {
+        type: String,
+        trim: true,
+        required: function() { return this.participantType === "EXTERNAL"; }
+    },
+    paymentScreenshot: {
+        type: String,
+        required: function() { return this.participantType === "EXTERNAL"; }
+    },
+    status: {
+        type: String,
+        enum: ["VERIFIED", "PENDING", "REJECTED"],
+        default: function() {
+            return this.participantType === "INTERNAL" ? "VERIFIED" : "PENDING";
+        }
+    },
 },{timestamps:true});
 
 registerSchema.index({eventName:1,capPhone:1},{unique:true});
