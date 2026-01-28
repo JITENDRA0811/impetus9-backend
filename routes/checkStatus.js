@@ -1,7 +1,6 @@
 const express=require('express')
 const router=express.Router()
 const registerModel=require('../models/registerModel')
-const verifyCaptcha=require("../middleware/verifyCaptcha")
 const rateLimiter=require("../middleware/rateLimiter")
 const allowedEvents=require('../allowedEvents')
 router.post("/",rateLimiter,async(req,res)=>{
@@ -10,12 +9,10 @@ router.post("/",rateLimiter,async(req,res)=>{
             eventName,
             searchField,
             searchValue,
-            captchaToken,
         }=req.body;
         if(!allowedEvents.has(eventName)) return res.status(400).json({error:"Invalid Event"});
-        if(!searchValue || !searchField || !captchaToken) return res.status(400).json({error: "Missing Required Fields"});
-        const captchaValid=await verifyCaptcha(captchaToken);
-        if(!captchaValid) return res.status(400).json({error:"Captcha verification failed"});
+        if(!searchValue || !searchField ) return res.status(400).json({error: "Missing Required Fields"});
+        
         const query={eventName:eventName};
         if(searchField=="receiptID") query.receiptId=searchValue.trim();
         else if(searchField==='RollNo'){

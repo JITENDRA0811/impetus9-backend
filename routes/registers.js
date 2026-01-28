@@ -1,10 +1,9 @@
 const express=require('express')
 const router=express.Router()
-const multer = require('multer'); 
+const multer = require('multer'); // Added
 const path = require('path'); 
 const fs = require('fs');
 const registerModel=require('../models/registerModel')
-const verifyCaptcha=require('../middleware/verifyCaptcha')
 const rateLimiter=require('../middleware/rateLimiter')
 const allowedEvents=require('../allowedEvents')
 
@@ -17,7 +16,7 @@ const storage = multer.diskStorage({
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, 'receipt-' + uniqueSuffix + path.extname(file.originalname));
     }
-});
+})
 const upload = multer({ 
     storage: storage,
     limits: { fileSize: 5 * 1024 * 1024 },
@@ -38,19 +37,21 @@ router.post("/",rateLimiter,upload.single('paymentScreenshot'), async(req,res)=>
             capPhone,
             capRoll,
             teamMembers,
-            captchaToken,
             deviceFingerprint,
             participantType,
         }=data;
+        const OPEN_EVENTS = ["Photo", "BGMI"]; 
+
+        if (!OPEN_EVENTS.includes(eventName)) {
+            return res.status(400).json({ 
+                error: "Registration for this event is not opened." 
+            });
+        }
         if(!allowedEvents.has(eventName)){
             return res.status(400).json({error:"Invalid Event"})
         }
         if(!teamName||!capName||!capPhone||!deviceFingerprint){
             return res.status(400).json({error:"Missing required fields"});
-        }
-        const captachaValid=await verifyCaptcha(captchaToken);
-        if(!captachaValid){
-            return res.status(400).json({error:"captcha verification failed"});
         }
         const deviceCount=await registerModel.countDocuments({deviceFingerprint:deviceFingerprint})
         if(deviceCount>=5){
@@ -80,12 +81,18 @@ router.post("/",rateLimiter,upload.single('paymentScreenshot'), async(req,res)=>
     }
     catch (err){
         if (err.code===11000) {
-            const field=Object.keys(err.keyPattern)[0];
-            if (field==='capRoll'){
-                 return res.status(409).json({error:'This Roll Number is already registered for this event.'});
+            console.log("FULL DUPLICATE PATTERN:", err.keyPattern);
+
+            const keys = Object.keys(err.keyPattern);
+            if (keys.includes('capPhone')) {
+                return res.status(409).json({ error: 'This Phone Number is already registered for this event.' });
             }
+            if (keys.includes('capRoll')) {
+                return res.status(409).json({ error: 'This Roll Number is already registered for this event.' });
+            }
+
             return res.status(409).json({
-                error:'Duplicate Registration: This Captain/Phone is already registered for this event.'
+                error: 'Duplicate Registration: This team/captain is already registered.'
             });
         }
         if(err.name==='ValidationError'){
@@ -98,26 +105,41 @@ router.post("/",rateLimiter,upload.single('paymentScreenshot'), async(req,res)=>
 });
 
 module.exports=router;
-
 function prepareRegistrationPayload(req) {
     // If a file was uploaded, we know it's an External Multipart request
     if (req.file) {
         try {
-            return {
-                ...req.body,
-                // FormData sends objects as strings, so we must parse them
-                teamMembers: req.body.teamMembers ? JSON.parse(req.body.teamMembers) : [],
-                captain: req.body.captain ? JSON.parse(req.body.captain) : undefined,
-                
-                // Add the file path and enforce type
+            const body = req.body;
+            
+            // 1. Parse nested JSON if it exists (e.g. if frontend sends 'captain' object)
+            // If your frontend sends flat fields, this part is optional but good for safety.
+            const captainData = body.captain ? JSON.parse(body.captain) : {};
+
+            // 2. Construct the payload
+            const payload = {
+                ...body,
+                ...captainData, // Flatten captain details to top level if necessary
+                teamMembers: body.teamMembers ? JSON.parse(body.teamMembers) : [],
                 paymentScreenshot: req.file.path,
                 participantType: "EXTERNAL"
             };
+
+            // 3. CRITICAL FIX: Convert empty strings to undefined for optional unique fields
+            if (payload.capRoll === "") {
+                payload.capRoll = undefined;
+            }
+
+            return payload;
         } catch (e) {
             throw new Error("Invalid Data Format: Could not parse FormData JSON");
         }
     }
     
-    // Default for Internal Users (Pure JSON)
-    return req.body;
+    // For Internal Users
+    const payload = req.body;
+    // Good practice to apply the same fix for internal users just in case
+    if (payload.capRoll === "") {
+        payload.capRoll = undefined;
+    }
+    return payload;
 }

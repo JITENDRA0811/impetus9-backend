@@ -65,10 +65,6 @@ const registerSchema=new Schema({
         enum:["INTERNAL","EXTERNAL"],
         required:true
     },
-    captchaToken:{
-        type:String,
-        required:true
-    },
     deviceFingerprint:{
         type:String,
         index:true,
@@ -76,11 +72,6 @@ const registerSchema=new Schema({
     receiptId: {
         type:String,
         unique:true,
-    },
-   transactionId: {
-        type: String,
-        trim: true,
-        required: function() { return this.participantType === "EXTERNAL"; }
     },
     paymentScreenshot: {
         type: String,
